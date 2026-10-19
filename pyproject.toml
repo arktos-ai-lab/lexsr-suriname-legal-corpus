@@ -40,6 +40,9 @@ ingestion = [
     "lxml>=4.9",
 ]
 ocr = [
+    "PyPDF2>=3.0",
+    "pytesseract>=0.3",
+    "pdf2image>=1.16",
     "torch>=2.0",
     "transformers>=4.30",
     "pypdfium2>=4.0",

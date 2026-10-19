@@ -78,3 +78,6 @@ site/
 *.bbl
 *.blg
 *.toc
+
+# Paper sources and PDF (kept locally; the paper is cited in README.md)
+article/
