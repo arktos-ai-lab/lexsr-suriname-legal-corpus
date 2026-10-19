@@ -1,0 +1,21 @@
+LexSR corpus v1.0: licence
+
+The texts in this corpus are Surinamese legislation, regulations and other general
+rules issued by public authority, and decisions of the Hof van Justitie and other courts
+of Suriname. Article 11 of the Auteurswet 1913 (G.B. 1913 no. 15, as amended) provides
+that no copyright subsists in laws, decrees and ordinances issued by public authority,
+nor in judicial decisions and administrative decisions. These texts are therefore free
+of copyright in Suriname and are redistributed here without restriction.
+
+The texts of 21 works that do not fall under Article 11 (student theses, standards-body
+documents, third-party technical codes, a policy plan) are withheld: their rows,
+identifiers and citations remain, but the text fields are empty. The list and reasons
+are in the works table (metadata field "text_withheld").
+
+The compilation (structure, segmentation, identifiers, citation and amendment links,
+knowledge graph and documentation) by Ernst van Gassen, Arktos AI Lab, is licensed
+under the Creative Commons Attribution 4.0 International licence (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/
+
+The LexSR code is released separately under the MIT licence:
+https://github.com/arktos-ai-lab/lexsr-suriname-legal-corpus

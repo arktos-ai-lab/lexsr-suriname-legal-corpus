@@ -9,6 +9,7 @@ BenchmarkSuite  — runner: feeds KnownAnswerDataset through a resolver
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,9 @@ from .dataset import KnownAnswer, KnownAnswerDataset
 from .metrics import CitationMetrics, QualityReport, TemporalMetrics
 
 logger = logging.getLogger(__name__)
+
+# the version date in a fragment URI: /id/law/x/2024-01-15/article/7 -> /id/law/x/article/7
+_DATE_SEGMENT = re.compile(r"/\d{4}-\d{2}-\d{2}(?=/|$)")
 
 
 @dataclass
@@ -144,26 +148,21 @@ class BenchmarkSuite:
                 message=f"Resolver error: {exc}",
             )
 
-        # Collect all non-None URI strings from each resolved reference.
-        # Include both the fragment URI and the work URI so that a work-level
-        # expected URI (e.g. "/id/law/arbeidswet-1963") matches even when
-        # the resolver returns a more specific fragment URI.
+        # Collect the fragment and work URI of each resolved reference. Fragment URIs carry
+        # the version date (/id/law/x/2024-01-15/article/7); the gold set has no dates, so
+        # the date segment is dropped before comparing. Matching is exact: a case naming
+        # "artikel 7" passes only if article 7 (and any lid/sub named) is resolved, not
+        # merely the law.
         uri_set: set[str] = set()
         for ref in refs:
-            if ref.uri:
-                uri_set.add(ref.uri)
-            if ref.work_uri:
-                uri_set.add(ref.work_uri)
+            for u in (ref.uri, ref.work_uri):
+                if u:
+                    uri_set.add(_DATE_SEGMENT.sub("", u))
 
         actual_uris = sorted(uri_set)
 
-        # A case passes when every expected URI is satisfied.
-        # Satisfaction: exact membership OR the expected URI is a prefix of
-        # any actual URI (handles work-URI expectations against fragment results).
         def _satisfied(expected: str) -> bool:
-            if expected in uri_set:
-                return True
-            return any(actual.startswith(expected) for actual in uri_set)
+            return expected in uri_set
 
         if not ka.expected_uris:
             passed = len(uri_set) == 0

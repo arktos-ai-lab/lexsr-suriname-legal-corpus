@@ -289,7 +289,7 @@ class TestSilverProcessor:
         )
         result = self.processor.process(rec)
         assert result.work is not None
-        assert result.work.uri == "/id/gazette/sr-2024-123"
+        assert result.work.uri == "/id/gazette/sb-2024-123"
         assert len(result.expressions) == 1
 
     def test_gazette_missing_year_or_number(self):

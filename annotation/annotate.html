@@ -46,7 +46,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 16px; }
   font: 13px/1.5 ui-monospace, Consolas, monospace; }
 .field a { color: var(--accent); }
 mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 3px; }
-.question { margin-top: 16px; font-weight: 600; }
+.question { margin-top: 16px; font-weight: 600; white-space: pre-line; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .v { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px;
   padding: 8px 14px; cursor: pointer; font: inherit; }
@@ -99,6 +99,10 @@ function esc(s) {
 function render(text) {
   const t = esc(text);
   if (/^https?:\/\/\S+$/.test(String(text).trim())) return `<a href="${t}" target="_blank" rel="noopener">${t}</a>`;
+  // local source files served by serve.py, one per line
+  const lines = String(text).trim().split("\n");
+  if (lines[0] && lines.every(l => /^\/raw\/\S+$/.test(l)))
+    return lines.map(l => `<a href="${esc(encodeURI(l))}" target="_blank" rel="noopener">${esc(decodeURI(l.slice(5)))}</a>`).join("\n");
   return t.replace(/\[\[([\s\S]*?)\]\]/g, "<mark>$1</mark>");
 }
 function getAnnotator() { try { return localStorage.getItem("lexsr_annotator") || ""; } catch (e) { return ""; } }

@@ -15,6 +15,8 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+_HOMOGLYPHS = str.maketrans("АВСЕНІЈКМОРТХаеіорсху", "ABCEHIJKMOPTXaeiopcxy")
+
 
 class ElementType(Enum):
     """Legal document element types."""
@@ -79,7 +81,7 @@ class StructureDetector:
 
     # Article patterns (Dutch legal documents)
     ARTICLE_PATTERNS = [
-        r"(?:^|\n)\s*Artikel\s+(\d+[a-z]?)\s*\.?\s*([^\n]*)",  # Artikel 4. Title
+        r"(?:^|\n)\s*Artikel\s+(\d+[a-z]?|(?-i:[IVXLC]+)\b)\s*\.?\s*([^\n]*)",  # Artikel 4. / ARTIKEL I
         r"(?:^|\n)\s*Art\.\s*(\d+[a-z]?)\s*\.?\s*([^\n]*)",    # Art. 4. Title
         r"(?:^|\n)\s*(\d+)\s*\.\s+([A-Z][^\n]*)",              # 4. TITLE
     ]
@@ -189,6 +191,9 @@ class StructureDetector:
                 if 'Artikel 1\n' not in before_art11 and 'Artikel 1 ' not in before_art11:
                     # Replace first occurrence of "Artikel 11" with "Artikel 1"
                     text = text[:first_art11] + 'Artikel 1' + text[first_art11+10:]
+
+        # Some digital PDFs use Cyrillic look-alikes ("АRTIKEL І"); map them to Latin
+        text = text.translate(_HOMOGLYPHS)
 
         # Remove actual superscript chars if they exist
         text = re.sub(r'([¹²³⁴⁵⁶⁷⁸⁹⁰]+)', '', text)
@@ -413,7 +418,7 @@ class StructureDetector:
         score = 0.0
 
         # Number looks valid
-        if re.match(r'^\d+[a-z]?$', number):
+        if re.match(r'^(?:\d+[a-z]?|[IVXLC]+)$', number):
             score += 0.3
 
         # Has substantial text

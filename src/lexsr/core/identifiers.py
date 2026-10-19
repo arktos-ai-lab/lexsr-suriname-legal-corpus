@@ -24,7 +24,7 @@ URI patterns:
     Work:       /id/celex/{CELEX}
 
   Gazette:
-    Work:       /id/gazette/{jurisdiction}/{year}/{number}
+    Work:       /id/gazette/{sb|gb}-{year}-{number}   (Staatsblad / Gouvernementsblad)
 """
 
 from __future__ import annotations
@@ -684,9 +684,25 @@ def celex_work_uri(celex: str) -> str:
     return build_uri(URIScheme.CELEX, celex).to_uri()
 
 
-def gazette_uri(jurisdiction: str, year: str, number: str) -> str:
-    """Build a URI for a gazette publication."""
-    official_id = f"{jurisdiction}-{year}-{number}"
+GAZETTE_CODES = {"staatsblad": "sb", "gouvernementsblad": "gb"}
+
+
+def gazette_code(gazette_type: str, year: str = "") -> str:
+    """'sb' (Staatsblad) or 'gb' (Gouvernementsblad) for a gazette type name or code.
+    Unknown types fall back on the year: the Staatsblad replaced the Gouvernementsblad
+    at independence in 1975."""
+    t = (gazette_type or "").strip().lower().replace(".", "").replace(" ", "")
+    if t in ("sb", "gb"):
+        return t
+    if t in GAZETTE_CODES:
+        return GAZETTE_CODES[t]
+    return "gb" if year.isdigit() and int(year) < 1975 else "sb"
+
+
+def gazette_uri(gazette: str, year: str, number: str) -> str:
+    """Build a URI for a gazette issue: /id/gazette/sb-2024-123 (Staatsblad) or
+    /id/gazette/gb-1963-163 (Gouvernementsblad). `gazette` is 'sb', 'gb' or a type name."""
+    official_id = f"{gazette_code(gazette, year)}-{year}-{number}"
     return f"{URI_PREFIX}/{URIScheme.GAZETTE.value}/{official_id}"
 
 
@@ -736,6 +752,6 @@ def _get_pattern_hint(scheme: URIScheme) -> str:
         URIScheme.ECLI: "ECLI:CC:COURT:YEAR:NUMBER (e.g. ECLI:NL:HR:2020:1234)",
         URIScheme.CELEX: "digit + 4-digit year + letter + digits (e.g. 32016R0679)",
         URIScheme.LAW: "jurisdiction-slug (e.g. sr-arbeidswet-1963)",
-        URIScheme.GAZETTE: "jurisdiction-year-number (e.g. sr-2024-123)",
+        URIScheme.GAZETTE: "gazette-year-number, sb or gb (e.g. sb-2024-123, gb-1963-163)",
     }
     return hints.get(scheme, "free-form identifier")

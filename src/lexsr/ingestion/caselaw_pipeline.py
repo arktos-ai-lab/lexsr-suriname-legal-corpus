@@ -30,6 +30,89 @@ logger = logging.getLogger(__name__)
 # Considerations are numbered "N.N" (section.paragraph), e.g. "2.1", "4.7".
 _CONSIDERATION_RE = re.compile(r"(?:^|\n)(\d{1,2}\.\d{1,2})\s+(.*?)(?=\n\d{1,2}\.\d{1,2}\s|\Z)", re.S)
 
+# Decisions without "N.N" numbering come in two layouts (headings are short lines):
+#  - recent: a "De beoordeling" heading, paragraphs "1.", "2.", ... up to "De beslissing";
+#  - older:  a "Ten aanzien van het recht" heading, paragraphs opening with
+#            "Overwegende, dat" (or plain "dat"), up to the dictum ("Rechtdoende").
+_BEOORDELING_RE = re.compile(r"^[ \t]*(?:\d\.?[ \t]+)?(?:de[ \t]+)?(?:verdere[ \t]+)?beoordeling\b.{0,50}$",
+                             re.I | re.M)
+_RECHT_RE = re.compile(r"^[ \t]*(?:overwegende[ \t,]+)?(?:ten[ \t]+aanzien[ \t]+van|t\.[ \t]*a\.[ \t]*v\.)"
+                       r"[ \t]+het[ \t]+recht\b.{0,30}$", re.I | re.M)
+_DICTUM_RE = re.compile(
+    r"^[ \t]*(?:de[ \t]+beslissing|beslissing\b|rechtdoende|beslissende|"
+    r"(?:gezien|gelet[ \t]+op)[ \t]+(?:de[ \t]+)?(?:betrekkelijke|toepasselijke)[ \t]+wetsartikelen).{0,50}$",
+    re.I | re.M)
+# "1.", "1.1", "1.1.", "3.3.3." (a bare "12" is a date or amount, not a number)
+_PLAIN_NUM_RE = re.compile(r"^[ \t]*(\d{1,2}\.(?:\d{1,2}\.?){0,2}|\d{1,2}(?:\.\d{1,2}){1,2})[ \t]+(?=\S)", re.M)
+_OVERWEGENDE_RE = re.compile(r"^[ \t]*overwegende\b", re.I | re.M)
+_DAT_RE = re.compile(r"^[ \t]*dat\b", re.M)
+
+
+def strip_site_header(text: str) -> str:
+    """Drop the rechtspraak.sr page header (Instantie, Zaaknummer, ..., Inhoudsindicatie)
+    that precedes the decision; those fields are already stored in the work metadata."""
+    if not text.lstrip().startswith("Instantie"):
+        return text
+    m = re.search(r"^[ \t]*Uitspraak[ \t]*$", text, re.M)
+    return text[m.end():].lstrip("\n") if m else text
+
+
+def _section(text: str, start: int) -> tuple:
+    """(start, end) offsets from `start` up to the dictum heading, or the end of `text`."""
+    end = _DICTUM_RE.search(text, start)
+    return start, end.start() if end else len(text)
+
+
+def _split_at(text: str, span: tuple, marker: re.Pattern, numbered: bool) -> List[tuple]:
+    """Split text[span] at each line matching `marker`; text before the first marker is
+    not part of any consideration. Returns (number, start, body_start, end) offsets,
+    numbering by position unless `numbered`."""
+    lo, hi = span
+    hits = list(marker.finditer(text, lo, hi))
+    out = []
+    for i, m in enumerate(hits):
+        end = hits[i + 1].start() if i + 1 < len(hits) else hi
+        body = m.end() if numbered else m.start()
+        if text[body:end].strip():
+            out.append((m.group(1).rstrip(".") if numbered else str(len(out) + 1), m.start(), body, end))
+    return out
+
+
+def consideration_spans(text: str) -> List[tuple]:
+    """(number, start, body_start, end) offsets of a decision's considerations, or []."""
+    found = [(m.group(1), m.start(1), m.start(2), m.end(2)) for m in _CONSIDERATION_RE.finditer(text)]
+    if found:
+        # the last consideration runs to the end of the text; stop it at the dictum
+        n, s, b, e = found[-1]
+        dictum = _DICTUM_RE.search(text, b, e)
+        if dictum:
+            found[-1] = (n, s, b, dictum.start())
+        return found
+    head = _BEOORDELING_RE.search(text)
+    if head:
+        parts = _split_at(text, _section(text, head.end()), _PLAIN_NUM_RE, numbered=True)
+        if len(parts) >= 2:
+            return parts
+    head = _RECHT_RE.search(text)
+    if head:
+        # under the heading: numbered paragraphs, else "Overwegende" ones (one is enough),
+        # else paragraphs opening with "dat"
+        span = _section(text, head.end())
+        for marker, numbered, least in ((_PLAIN_NUM_RE, True, 2), (_OVERWEGENDE_RE, False, 1),
+                                        (_DAT_RE, False, 2)):
+            parts = _split_at(text, span, marker, numbered)
+            if len(parts) >= least:
+                return parts
+    elif len(_OVERWEGENDE_RE.findall(text)) >= 2:
+        span = _section(text, _OVERWEGENDE_RE.search(text).start())
+        return _split_at(text, span, _OVERWEGENDE_RE, numbered=False)
+    return []
+
+
+def split_considerations(text: str) -> List[tuple]:
+    """(number, text) pairs for the considerations of a decision, or [] if none found."""
+    return [(n, text[b:e].strip()) for n, _, b, e in consideration_spans(text)]
+
 # Self-citations to other rechtspraak.sr decisions, e.g. "SRU-HvJ-2019-3".
 _CASE_CITATION_RE = re.compile(r"\bSRU-[A-Za-z]{1,4}-\d{1,4}(?:-\d{1,4})?\b", re.IGNORECASE)
 
@@ -68,7 +151,7 @@ class CaseLawPipeline:
         try:
             meta = doc.metadata or {}
             sru_id = meta.get("sru_id") or doc.title
-            full_text = meta.get("full_text", "")
+            full_text = strip_site_header(meta.get("full_text", ""))
             if not full_text.strip():
                 result.success = False
                 result.errors.append("No decision text extracted")
@@ -145,26 +228,36 @@ class CaseLawPipeline:
 
     @staticmethod
     def _build_fragments(work_id: str, work_uri: str, full_text: str) -> List[Fragment]:
-        fragments = []
+        """Considerations, plus the text before them (parties, procedure, facts) as a
+        FACTS fragment and the text after them (dictum, signatures) as a DECISION
+        fragment, so no part of the decision is dropped."""
+        spans = consideration_spans(full_text)
+        if not spans:
+            return []
+
+        def frag(fid, uri, ftype, number, text):
+            return Fragment(id=fid, uri=uri, expression_id=work_id, expression_uri=work_uri,
+                            work_id=work_id, fragment_type=ftype, number=number, text=text,
+                            position=len(fragments))
+
+        fragments: List[Fragment] = []
+        before = full_text[:spans[0][1]].strip()
+        if before:
+            fragments.append(frag(f"{work_id}-facts", f"{work_uri}/facts", FragmentType.FACTS, "", before))
         seen: dict = {}
-        for match in _CONSIDERATION_RE.finditer(full_text):
-            number, text = match.group(1), match.group(2).strip()
+        for number, _, body, end in spans:
+            text = full_text[body:end].strip()
             if not text:
                 continue
             # A decision can restart its numbering (e.g. a second "2.1" under a
             # later heading); suffix repeats so they don't overwrite each other.
             seen[number] = seen.get(number, 0) + 1
             key = number if seen[number] == 1 else f"{number}-{seen[number]}"
-            fragments.append(Fragment(
-                id=f"{work_id}-ro{key.replace('.', '-')}",
-                uri=f"{work_uri}/consideration/{key}",
-                expression_id=work_id,
-                expression_uri=work_uri,
-                work_id=work_id,
-                fragment_type=FragmentType.CONSIDERATION,
-                number=number,
-                text=text,
-            ))
+            fragments.append(frag(f"{work_id}-ro{key.replace('.', '-')}", f"{work_uri}/consideration/{key}",
+                                  FragmentType.CONSIDERATION, number, text))
+        after = full_text[spans[-1][3]:].strip()
+        if after:
+            fragments.append(frag(f"{work_id}-decision", f"{work_uri}/decision", FragmentType.DECISION, "", after))
         return fragments
 
     @staticmethod

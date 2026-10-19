@@ -17,10 +17,12 @@ import os
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote
 
 HERE = Path(__file__).resolve().parent
 TASKS = HERE / "tasks"
 LABELS = HERE / "labels"
+RAW = HERE.parent / "data" / "raw"
 VERDICTS = {"correct", "wrong", "unsure", "skip"}
 
 
@@ -64,8 +66,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/tasks":
             summary = []
             for t in task_names():
-                n = len(read_jsonl(TASKS / f"{t}.jsonl"))
-                done = sum(1 for r in latest_labels(t).values() if r["verdict"] != "skip")
+                ids = {it["id"] for it in read_jsonl(TASKS / f"{t}.jsonl")}
+                n = len(ids)
+                # labels of items no longer in the task (kept for the record) are not counted
+                done = sum(1 for i, r in latest_labels(t).items() if i in ids and r["verdict"] != "skip")
                 summary.append({"name": t, "items": n, "done": done})
             self._json(summary)
         elif path.startswith("/api/task/"):
@@ -73,6 +77,14 @@ class Handler(BaseHTTPRequestHandler):
             if t not in task_names():
                 return self._json({"error": "unknown task"}, 404)
             self._json({"items": read_jsonl(TASKS / f"{t}.jsonl"), "labels": latest_labels(t)})
+        elif path.startswith("/raw/"):
+            # source files (PDF, HTML) under data/raw only, for checking OCR against the original
+            f = (RAW / unquote(path[len("/raw/"):])).resolve()
+            if RAW.resolve() not in f.parents or not f.is_file():
+                return self._json({"error": "not found"}, 404)
+            ctype = {".pdf": "application/pdf", ".html": "text/html; charset=utf-8",
+                     ".htm": "text/html; charset=utf-8"}.get(f.suffix.lower(), "application/octet-stream")
+            self._send(200, f.read_bytes(), ctype)
         else:
             self._json({"error": "not found"}, 404)
 

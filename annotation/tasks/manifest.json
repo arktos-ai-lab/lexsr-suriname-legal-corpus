@@ -1,12 +1,13 @@
 {
-  "db": "data/canonical_backup_20260913_submitted.db",
+  "db": "data/release_build/lexsr_work.db",
   "seed": 20261014,
   "tasks": {
-    "gold": 61,
-    "instructions": 147,
-    "parse_failures": 14,
-    "links": 200,
-    "gazette": 100,
-    "segmentation": 20
+    "gold": 65,
+    "instructions": 128,
+    "parse_failures": 9,
+    "links": 49,
+    "gazette": 75,
+    "segmentation": 20,
+    "links_dna": 15
   }
 }

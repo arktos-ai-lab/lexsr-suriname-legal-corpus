@@ -18,7 +18,7 @@ from lexsr.ingestion.scrapers.rechtspraak import (
     RechtspraakScraper,
     parse_dutch_date,
 )
-from lexsr.ingestion.caselaw_pipeline import CaseLawPipeline
+from lexsr.ingestion.caselaw_pipeline import CaseLawPipeline, split_considerations, strip_site_header
 
 
 # ===================================================================
@@ -153,9 +153,12 @@ class TestCaseLawPipeline:
         )
         result = CaseLawPipeline().process_document(doc)
 
-        assert [f.number for f in result.fragments] == ["2.1", "2.2", "3.1"]
-        assert all(f.fragment_type == FragmentType.CONSIDERATION for f in result.fragments)
-        assert "Eerste overweging" in result.fragments[0].text
+        considerations = [f for f in result.fragments if f.fragment_type == FragmentType.CONSIDERATION]
+        assert [f.number for f in considerations] == ["2.1", "2.2", "3.1"]
+        assert "Eerste overweging" in considerations[0].text
+        # the heading before the first consideration is kept, not dropped
+        assert result.fragments[0].fragment_type == FragmentType.FACTS
+        assert result.fragments[0].text == "De beoordeling"
 
     def test_process_document_falls_back_to_single_fragment(self):
         doc = _make_doc("Geen genummerde overwegingen in deze korte uitspraak.")
@@ -217,3 +220,40 @@ class TestRepeatedConsiderationNumbers:
         assert len({f.id for f in frs}) == 3
         assert frs[2].uri.endswith("/consideration/2.1-2")
         assert "Tweede reeks" in frs[2].text and "Eerste beoordeling" in frs[1].text
+
+
+class TestUnnumberedLayouts:
+    def test_site_header_stripped(self):
+        text = "Instantie\nHof van Justitie\nZaaknummer\nGR-1\nInhoudsindicatie\nKort.\nUitspraak\nHET HOF"
+        assert strip_site_header(text) == "HET HOF"
+
+    def test_plain_numbers_under_beoordeling(self):
+        text = ("Het procesverloop\n1. Pleitnota.\nDe beoordeling\n1. Het beroep is tijdig.\n"
+                "2. Het Hof oordeelt.\nVervolg van twee.\nDe beslissing in hoger beroep\nHet Hof: wijst af.")
+        parts = split_considerations(text)
+        assert [n for n, _ in parts] == ["1", "2"]
+        assert "Vervolg van twee." in parts[1][1] and "wijst af" not in parts[1][1]
+
+    def test_overwegende_under_ten_aanzien_van_het_recht(self):
+        text = ("TEN AANZIEN VAN DE FEITEN:\nOverwegende, dat feiten.\nTEN AANZIEN VAN HET RECHT:\n"
+                "Overwegende, dat het beroep tijdig is.\nOverwegende, dat de grief faalt;\n"
+                "RECHTDOENDE IN HOGER BEROEP:\nBevestigt.")
+        parts = split_considerations(text)
+        assert [n for n, _ in parts] == ["1", "2"]
+        assert parts[0][1].startswith("Overwegende, dat het beroep") and "Bevestigt" not in parts[1][1]
+
+    def test_no_text_lost_around_considerations(self):
+        text = ("Gezien de stukken; artikel 1 Personeelswet.\nTEN AANZIEN VAN HET RECHT:\n"
+                "Overwegende, dat het beroep tijdig is.\nOverwegende, dat de grief faalt;\n"
+                "RECHTDOENDE IN HOGER BEROEP:\nBevestigt.")
+        frs = CaseLawPipeline._build_fragments("caselaw-x", "/id/caselaw/x", text)
+        assert [f.fragment_type for f in frs] == [FragmentType.FACTS, FragmentType.CONSIDERATION,
+                                                  FragmentType.CONSIDERATION, FragmentType.DECISION]
+        assert "Personeelswet" in frs[0].text and frs[-1].text.startswith("RECHTDOENDE")
+        assert [f.position for f in frs] == [0, 1, 2, 3]
+
+    def test_dictum_not_inside_last_numbered_consideration(self):
+        text = "De beoordeling\n2.1 Eerste.\n2.2 Laatste overweging.\nDe beslissing in hoger beroep\nHet Hof: bevestigt."
+        frs = CaseLawPipeline._build_fragments("caselaw-x", "/id/caselaw/x", text)
+        assert frs[-2].number == "2.2" and "bevestigt" not in frs[-2].text
+        assert frs[-1].fragment_type == FragmentType.DECISION and "bevestigt" in frs[-1].text

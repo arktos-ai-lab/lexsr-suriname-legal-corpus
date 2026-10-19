@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 class ReferenceType(Enum):
     """Classification of a raw reference extracted from text."""
     ECLI = "ecli"
+    CASE_SR = "case_sr"                            # "SRU-HvJ-2020-7" (rechtspraak.sr)
     CELEX = "celex"
     LEGISLATION_CITATION = "legislation_citation"  # "artikel X Wet Y"
     CASE_CITATION = "case_citation"                # court name + date pattern
@@ -138,6 +139,10 @@ class ResolvedReference:
 _ECLI_RE = re.compile(
     r'ECLI:[A-Z]{2}:[A-Z]{1,8}:\d{4}:[A-Za-z0-9.]+'
 )
+
+# Surinamese decisions as identified on rechtspraak.sr: SRU-HvJ-2020-7, SRU-K1-2021-100.
+# Suriname has no ECLI; this is the identifier its courts' portal assigns.
+_SRU_RE = re.compile(r'\bSRU-([A-Za-z]{1,4}\d?)-(\d{4})-(\d{1,4})\b', re.IGNORECASE)
 
 # CELEX IDs (EU legislation identifiers).
 # Format: sector-digit + 4-digit year + type-letter + sequence digits
@@ -282,6 +287,7 @@ class ReferenceParser:
 
         # Pass 1: deterministic identifiers
         refs.extend(self._extract_ecli(text))
+        refs.extend(self._extract_sru(text))
         refs.extend(self._extract_celex(text))
 
         # Pass 2: structured legislation citations
@@ -334,6 +340,27 @@ class ReferenceParser:
                 char_end=end_pos,
                 context=text[max(0, m.start() - 50):m.end() + 80],
                 confidence=0.95 if consideration else 0.98,
+            ))
+        return refs
+
+    def _extract_sru(self, text: str) -> List[ParsedReference]:
+        """Extract rechtspraak.sr decision identifiers (SRU-HvJ-2020-7) and an optional r.o."""
+        refs = []
+        for m in _SRU_RE.finditer(text):
+            sru = f"SRU-{m.group(1)}-{m.group(2)}-{m.group(3)}"
+            consideration = None
+            ro_match = _CONSIDERATION_RE.search(text[m.end():m.end() + 80])
+            if ro_match:
+                consideration = ro_match.group(1)
+            refs.append(ParsedReference(
+                raw_text=f"{sru}, r.o. {consideration}" if consideration else sru,
+                ref_type=ReferenceType.CASE_SR,
+                consideration=consideration,
+                char_start=m.start(),
+                char_end=m.end() + (ro_match.end() if ro_match else 0),
+                context=text[max(0, m.start() - 50):m.end() + 80],
+                confidence=0.95 if consideration else 0.98,
+                metadata={"sru_id": sru},
             ))
         return refs
 
@@ -764,6 +791,7 @@ class CitationResolver:
 
         dispatch = {
             ReferenceType.ECLI: self._resolve_ecli,
+            ReferenceType.CASE_SR: self._resolve_sru,
             ReferenceType.CELEX: self._resolve_celex,
             ReferenceType.LEGISLATION_CITATION: self._resolve_legislation,
             ReferenceType.EU_REGULATION: self._resolve_eu_regulation,
@@ -794,6 +822,26 @@ class CitationResolver:
         )
 
     # --- Type-specific resolvers -------------------------------------------
+
+    def _resolve_sru(self, pr: ParsedReference) -> ResolvedReference:
+        """Resolve a rechtspraak.sr identifier to the corpus's case-law URI, the same scheme
+        the case-law pipeline gives decisions: /id/caselaw/sru-hvj-2020-7[/consideration/4]."""
+        slug = re.sub(r"[^a-z0-9]+", "-", pr.metadata["sru_id"].lower()).strip("-")
+        work = f"/id/caselaw/{slug}"
+        uri = f"{work}/consideration/{pr.consideration}" if pr.consideration else work
+        return ResolvedReference(
+            raw_text=pr.raw_text,
+            ref_type=ReferenceType.CASE_SR,
+            status=ResolutionStatus.RESOLVED,
+            uri=uri,
+            work_uri=work,
+            confidence=pr.confidence,
+            extraction_method="deterministic_sru",
+            parsed=pr,
+            char_start=pr.char_start,
+            char_end=pr.char_end,
+            context=pr.context,
+        )
 
     def _resolve_ecli(self, pr: ParsedReference) -> ResolvedReference:
         """Resolve an ECLI identifier, optionally with r.o. fragment."""
@@ -984,7 +1032,7 @@ class CitationResolver:
         number = pr.gazette_number
 
         if year and number:
-            uri = gazette_uri(jurisdiction, year, number)
+            uri = gazette_uri(pr.metadata.get("gazette_type", ""), year, number)
             return ResolvedReference(
                 raw_text=pr.raw_text,
                 ref_type=ReferenceType.GAZETTE,

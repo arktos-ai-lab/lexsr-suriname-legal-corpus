@@ -5,7 +5,7 @@ rests on automatically produced material. Each task asks one yes/no question per
 
 | Task | Items | Question | Feeds the paper |
 |---|---:|---|---|
-| `gold` | 61 | Is the expected answer right for this input? | Validity of the citation benchmark |
+| `gold` | 65 | Is the expected answer right for this input? | Validity of the citation benchmark |
 | `instructions` | 147 | Does the extracted instruction match the source block? | Instruction precision (new) |
 | `parse_failures` | 14 | Is there really no operative instruction in the stored text? | Error analysis, Section 6.3 |
 | `links` | 200 (sample) | Is the citation linked to the right act? | Linkage precision (new) |
@@ -15,7 +15,7 @@ rests on automatically produced material. Each task asks one yes/no question per
 ## Use
 
 ```bash
-python annotation/export_tasks.py --db data/canonical_backup_20260913_submitted.db   # once
+python annotation/export_tasks.py --db lexsr_corpus_v1.0.sqlite   # once; the released corpus
 python annotation/serve.py                    # open http://127.0.0.1:8765
 python annotation/summarize.py --md annotation/RESULTS.md                          # any time
 ```

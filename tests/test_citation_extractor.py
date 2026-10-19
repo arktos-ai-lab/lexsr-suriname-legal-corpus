@@ -77,7 +77,7 @@ class TestDetermineCitationType:
     def test_unknown_when_neither_scheme_recognized(self):
         extractor = CitationExtractor()
         result = extractor._determine_citation_type(
-            _law_fragment(), _resolved_ref("/id/gazette/sr-2020-1")
+            _law_fragment(), _resolved_ref("/id/gazette/sb-2020-1")
         )
         assert result == "unknown"
 
@@ -166,7 +166,7 @@ class TestToCitationFuzzyFallback:
 
         ec = ExtractedCitation(
             source_fragment_uri=frag.uri,
-            target_uri="/id/gazette/sr-2020-1",
+            target_uri="/id/gazette/sb-2020-1",
             raw_text="S.B. 2020 no. 1",
             confidence=0.8,
             position=0,

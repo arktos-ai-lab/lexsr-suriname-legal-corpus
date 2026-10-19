@@ -373,6 +373,21 @@ class OCRPipeline:
                     )
                     fragments.append(para_fragment)
 
+        # Decrees without articles (e.g. "BESLUIT: I. Te bekrachtigen ...") are kept
+        # whole rather than dropped
+        full_text = "\n\n".join(r.text for r in ocr_results).strip()
+        if not fragments and len(full_text) >= 200:
+            fragments.append(Fragment(
+                id=f"{work_id}-{version_date.isoformat()}-body",
+                uri=f"{expression.uri}/body",
+                expression_id=expression.id,
+                expression_uri=expression.uri,
+                work_id=work.id,
+                fragment_type=FragmentType.SECTION,
+                number="body",
+                text=full_text,
+            ))
+
         return work, expression, fragments
 
     def _validate_result(self, result: PipelineResult) -> List[str]:

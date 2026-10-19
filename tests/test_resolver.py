@@ -228,7 +228,7 @@ class TestCitationResolver:
         result = resolver.resolve_reference("S.B. 2024, 123")
         assert result.ref_type == ReferenceType.GAZETTE
         assert result.status == ResolutionStatus.RESOLVED
-        assert result.uri == "/id/gazette/sr-2024-123"
+        assert result.uri == "/id/gazette/sb-2024-123"
 
     def test_source_document_tracking(self, resolver):
         results = resolver.resolve_text(
@@ -398,3 +398,26 @@ class TestResolverStoreIntegration:
         assert report.total_fragments == 1
 
         store.close()
+
+
+class TestGazetteKind:
+    @pytest.fixture
+    def resolver(self):
+        return CitationResolver(default_date=date(2024, 1, 15))
+
+    def test_staatsblad_and_gouvernementsblad_get_different_uris(self, resolver):
+        sb = resolver.resolve_reference("Staatsblad 1987 no. 62")
+        gb = resolver.resolve_reference("G.B. 1963 no. 163")
+        assert sb.uri == "/id/gazette/sb-1987-62"
+        assert gb.uri == "/id/gazette/gb-1963-163"
+
+
+class TestRechtspraakSrIdentifiers:
+    @pytest.fixture
+    def resolver(self):
+        return CitationResolver(default_date=date(2024, 1, 15))
+
+    def test_sru_with_consideration(self, resolver):
+        refs = resolver.resolve_text("Zie SRU-HvJ-2018-4, r.o. 12.")
+        assert any(r.uri == "/id/caselaw/sru-hvj-2018-4/consideration/12" for r in refs)
+        assert any(r.work_uri == "/id/caselaw/sru-hvj-2018-4" for r in refs)

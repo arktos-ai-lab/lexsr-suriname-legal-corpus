@@ -100,8 +100,8 @@ class TestKnownAnswerDataset:
         ds = KnownAnswerDataset.suriname_legal_seed()
         cases_by_id = {c.id: c for c in ds.cases()}
 
-        # cit-leg-001: Arbeidswet
-        assert cases_by_id["cit-leg-001"].expected_uris == ["/id/law/arbeidswet-1963"]
+        # cit-leg-001: an input naming an article expects the article, not just the law
+        assert cases_by_id["cit-leg-001"].expected_uris == ["/id/law/arbeidswet-1963/article/7"]
 
         # cit-ecli-001: ECLI with consideration
         assert cases_by_id["cit-ecli-001"].expected_uris == [
@@ -109,17 +109,21 @@ class TestKnownAnswerDataset:
         ]
 
         # cit-leg-002: Grondwet
-        assert cases_by_id["cit-leg-002"].expected_uris == ["/id/law/grondwet-1987"]
+        assert cases_by_id["cit-leg-002"].expected_uris == ["/id/law/grondwet-1987/article/1"]
 
         # cit-multi-001: multi-ref with BW
-        assert "/id/law/burgerlijk-wetboek" in cases_by_id["cit-multi-001"].expected_uris
+        assert "/id/law/burgerlijk-wetboek/article/3" in cases_by_id["cit-multi-001"].expected_uris
         assert "/id/ecli/ECLI:NL:HR:2020:1234/consideration/4.3" in cases_by_id["cit-multi-001"].expected_uris
 
-        # cit-sb-001: Staatsblad gazette reference
-        assert cases_by_id["cit-sb-001"].expected_uris == ["/id/gazette/sr-1963-163"]
+        # cit-sb-001: Staatsblad gazette reference (the Staatsblad exists from 1975)
+        assert cases_by_id["cit-sb-001"].expected_uris == ["/id/gazette/sb-1987-62"]
+
+        # no invented Surinamese ECLIs; Surinamese decisions use rechtspraak.sr identifiers
+        assert not any("ECLI:SR" in c.input_text for c in ds.cases())
+        assert cases_by_id["cit-sru-001"].expected_uris == ["/id/caselaw/sru-k3-2016-1"]
 
         # cit-gb-001: Gouvernementsblad gazette reference
-        assert cases_by_id["cit-gb-001"].expected_uris == ["/id/gazette/sr-1936-144"]
+        assert cases_by_id["cit-gb-001"].expected_uris == ["/id/gazette/gb-1936-144"]
 
     def test_save_and_load(self, tmp_path):
         ds = KnownAnswerDataset("roundtrip")
@@ -351,3 +355,21 @@ class TestBenchmarkSuite:
         ds.add(KnownAnswer(id="u1", category="unknown_cat", input_text="x"))
         result = suite.run(ds)
         assert result.failed == 1
+
+
+def test_article_must_match_not_just_law():
+    """A resolved law without the named article no longer passes (no prefix matching)."""
+    from lexsr.evaluation.benchmark import BenchmarkSuite
+    from lexsr.evaluation.dataset import KnownAnswer, KnownAnswerDataset
+
+    class LawOnly:
+        def resolve_text(self, text, version_date=None):
+            class R:
+                uri = "/id/law/arbeidswet-1963"
+                work_uri = "/id/law/arbeidswet-1963"
+            return [R()]
+
+    ds = KnownAnswerDataset("t")
+    ds.add(KnownAnswer(id="a", category="citation", input_text="artikel 7 Arbeidswet 1963",
+                       expected_uris=["/id/law/arbeidswet-1963/article/7"]))
+    assert not BenchmarkSuite(resolver=LawOnly()).run(ds).cases[0].passed

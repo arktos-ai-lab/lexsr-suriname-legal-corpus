@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "upload_type": "dataset",
+    "prereserve_doi": true,
+    "title": "LexSR corpus v1.0: Surinamese legislation and case law with citation links and a knowledge graph",
+    "description": "<p>The government-sourced part of the LexSR corpus of Surinamese court decisions and legislation, modelled on FRBR: 300 decisions of the Hof van Justitie and other courts (1952 to 2025) from rechtspraak.sr, the court's own portal, and 751 legislative works whose text comes from Surinamese government websites: 704 PDFs published by De Nationale Assemblée (dna.sr), the others from the tax authority, maritime authority, standards bureau, government portal and justice ministry. 1,051 works, 54,490 fragments (2,684 case-law considerations), 7,160 extracted citations, 606 of them linked to a released work.</p><p>The research corpus described in the paper also contains 534 legislative works obtained from the private legal portal SRiS (sris.sr) or from local archives of unknown origin; these are not redistributed. Citations from released works to them keep their raw text, so the release links fewer citations than the research corpus. Figures for the full research corpus are included as research_corpus_stats.json.</p><p>Files: the SQLite store, one Parquet file per table, the graph as GraphML, summary statistics, a SHA-256 manifest of the government source files, and source_files.zip with the source file of each released work (1,041 government PDFs and decision pages, 1.2 GB). Article 11 of the Surinamese Auteurswet 1913 provides that there is no copyright in laws, decrees and regulations issued by public authority, nor in judicial and administrative decisions; the packaged files are such texts. Scanned PDFs were read with Tesseract OCR and not corrected by hand; texts are copies, not authenticated publications. Links were produced automatically; on a hand-checked sample of the research corpus, 96.5% are correct.</p><p>The text of documents outside the scope of Article 11 (standards-body drafts, third-party technical codes, notices) is withheld; their metadata and citations remain. The compilation is licensed CC BY 4.0.</p>",
+    "creators": [
+      {
+        "name": "van Gassen, Ernst",
+        "affiliation": "Arktos AI Lab",
+        "orcid": "0009-0000-0314-6441"
+      }
+    ],
+    "access_right": "open",
+    "license": "cc-by-4.0",
+    "keywords": [
+      "Suriname",
+      "legislation",
+      "case law",
+      "legal knowledge graph",
+      "FRBR",
+      "citation linking",
+      "legislative consolidation",
+      "Dutch",
+      "low-resource legal NLP"
+    ],
+    "version": "1.0",
+    "language": "nld",
+    "related_identifiers": [
+      {
+        "identifier": "https://github.com/arktos-ai-lab/lexsr-suriname-legal-corpus",
+        "relation": "isSupplementedBy",
+        "resource_type": "software"
+      }
+    ],
+    "notes": "Built with release/prepare_release_db.py and release/build_release.py in the LexSR repository. Code licence: MIT."
+  }
+}

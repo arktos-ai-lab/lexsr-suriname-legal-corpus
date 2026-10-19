@@ -22,6 +22,7 @@ from ..core.identifiers import (
     URIScheme,
     celex_work_uri,
     ecli_work_uri,
+    gazette_code,
     gazette_uri,
     law_expression_uri,
     law_fragment_uri,
@@ -254,13 +255,14 @@ def _process_gazette(
         result.errors.append("Missing year or number in metadata")
         return
 
-    official_id = f"{jurisdiction}-{year}-{number}"
-    title = meta.get("title", f"Gazette {jurisdiction.upper()} {year}, {number}")
+    gazette = gazette_code(meta.get("gazette", ""), str(year))
+    official_id = f"{gazette}-{year}-{number}"
+    title = meta.get("title", f"{gazette.upper()[0]}.B. {year} no. {number}")
     work_id = f"w-gazette-{official_id}"
 
     result.work = Work(
         id=work_id,
-        uri=gazette_uri(jurisdiction, year, number),
+        uri=gazette_uri(gazette, year, number),
         source_type=SourceType.GAZETTE,
         official_id=official_id,
         title=title,
@@ -274,7 +276,7 @@ def _process_gazette(
     pub_date = proc._meta_date(meta)
     result.expressions.append(Expression(
         id=f"e-gazette-{official_id}",
-        uri=gazette_uri(jurisdiction, year, number),
+        uri=gazette_uri(gazette, year, number),
         work_id=work_id,
         work_uri=result.work.uri,
         version_date=pub_date,

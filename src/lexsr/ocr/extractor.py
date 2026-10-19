@@ -100,6 +100,13 @@ class PDFExtractor:
 
         logger.info(f"Extracting text from: {pdf_path}")
 
+        # Poppler cannot open paths beyond the Windows 260-character limit
+        if len(str(pdf_path.resolve())) > 240:
+            import shutil, tempfile
+            short = Path(tempfile.mkdtemp()) / "doc.pdf"
+            shutil.copyfile(pdf_path, short)
+            pdf_path = short
+
         # Try digital extraction first
         results = self._extract_digital(pdf_path, pages)
 
@@ -183,6 +190,39 @@ class PDFExtractor:
             logger.warning(f"Engine {self.prefer_engine} not implemented, using Tesseract")
             return self._extract_tesseract(pdf_path, pages)
 
+    def _upright(self, image):
+        """Rotate a page so its text runs horizontally (Tesseract orientation detection)."""
+        try:
+            osd = self._pytesseract.image_to_osd(image, config="--psm 0")
+        except Exception:
+            return image  # too little text to tell; leave as is
+        import re
+        m = re.search(r"Rotate:\s*(\d+)", osd)
+        angle = int(m.group(1)) if m else 0
+        if angle:
+            logger.info(f"  rotating page by {angle} degrees")
+            return image.rotate(-angle, expand=True)
+        return image
+
+    def _split_spread(self, image):
+        """Split a landscape sheet holding two portrait pages at the blank gutter between them."""
+        w, h = image.size
+        if w < 1.2 * h:
+            return [image]
+        gray = image.convert("L")
+        small = gray.resize((400, max(1, int(400 * h / w))))
+        sw, sh = small.size
+        px = small.load()
+        ink = [sum(1 for y in range(sh) if px[x, y] < 128) for x in range(sw)]
+        lo, hi = int(sw * 0.35), int(sw * 0.65)
+        col = min(range(lo, hi), key=lambda x: ink[x])
+        # A real gutter is (nearly) empty; a wide single page has text running through the middle
+        if ink[col] > 0.02 * sh or max(ink[:lo] + ink[hi:]) == 0:
+            return [image]
+        cut = int(col * w / sw)
+        logger.info(f"  two-page spread, splitting at x={cut}")
+        return [image.crop((0, 0, cut, h)), image.crop((cut, 0, w, h))]
+
     def _extract_tesseract(
         self,
         pdf_path: Path,
@@ -231,19 +271,21 @@ class PDFExtractor:
 
             # Run OCR with detailed data
             try:
-                data = self._pytesseract.image_to_data(
-                    image,
-                    lang=self.tesseract_lang,
-                    output_type=self._pytesseract.Output.DICT,
-                )
-
-                # Extract text
-                text = self._pytesseract.image_to_string(image, lang=self.tesseract_lang)
-
-                # Calculate average confidence
-                confidences = [
-                    int(conf) for conf in data["conf"] if conf != "-1"
-                ]
+                # Turn sideways scans upright, then read a two-page spread
+                # (two A5 Staatsblad pages on one landscape sheet) one half at a time
+                halves = self._split_spread(self._upright(image))
+                texts, confidences, words = [], [], []
+                for part in halves:
+                    data = self._pytesseract.image_to_data(
+                        part,
+                        lang=self.tesseract_lang,
+                        output_type=self._pytesseract.Output.DICT,
+                    )
+                    texts.append(self._pytesseract.image_to_string(part, lang=self.tesseract_lang))
+                    confidences += [int(float(c)) for c in data["conf"] if str(c) != "-1"]
+                    words += [w for w in data["text"] if w.strip()]
+                text = "\n\n".join(texts)
+                data = {"text": words}
                 avg_confidence = sum(confidences) / len(confidences) if confidences else 0
                 avg_confidence = avg_confidence / 100.0  # Convert to 0-1 scale
 

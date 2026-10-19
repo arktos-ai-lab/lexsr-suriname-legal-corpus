@@ -52,6 +52,7 @@ def main():
     lines = ["| Task | Items | Labelled | Correct | Wrong | Unsure | Share correct (95% CI) | Annotators |",
              "|---|---:|---:|---:|---:|---:|---|---|"]
     follow = []
+    follow_weighted = []
     for tf in sorted((HERE / "tasks").glob("*.jsonl")):
         name = tf.stem
         items = {it["id"]: it for it in read_jsonl(tf)}
@@ -66,12 +67,22 @@ def main():
         share = f"{c / (c + w):.1%} ({lo:.1%} to {hi:.1%})" if c + w else "n/a"
         who = ", ".join(sorted({r["annotator"] for r in latest.values()}))
         lines.append(f"| {name} | {len(items)} | {lab} | {c} | {w} | {u} | {share} | {who} |")
+        # items standing for several citations (gazette: one item per reference) carry a
+        # "weight"; the weighted share estimates the share over citations, not references
+        if any("weight" in it for it in items.values()):
+            wc = sum(items[i].get("weight", 1) for i, r in latest.items() if r["verdict"] == "correct")
+            ww = sum(items[i].get("weight", 1) for i, r in latest.items() if r["verdict"] == "wrong")
+            if wc + ww:
+                follow_weighted.append(f"- {name}: {wc / (wc + ww):.1%} of {wc + ww} citations "
+                                       f"(each reference weighted by how often it is cited)")
         for iid, r in latest.items():
             if r["verdict"] in ("wrong", "unsure"):
                 follow.append(f"- **{name}** `{iid}` ({r['verdict']}): {items[iid]['title'][:80]}"
                               + (f". Note: {r['note']}" if r["note"] else ""))
 
     out = "\n".join(lines)
+    if follow_weighted:
+        out += "\n\nShare correct over citations:\n" + "\n".join(follow_weighted)
     out += "\n\nWhat \"correct\" means per task:\n" + "\n".join(f"- {k}: {m}" for k, m in MEANING.items())
     if follow:
         out += "\n\n## Wrong or unsure\n\n" + "\n".join(follow)

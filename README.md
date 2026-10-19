@@ -19,24 +19,28 @@ The paper source is in [`article/`](article/).
 
 ## Corpus at a glance
 
-Figures for the corpus reported in the paper:
+Figures for the research corpus, as reported in the paper (the public release holds only
+its government-sourced part; see [Data availability](#data-availability)):
 
 | | |
 |---|---|
-| Legislative works | 1,323 (1931 to 2025) |
+| Legislative works | 1,285 |
 | Case-law decisions | 300 (1952 to 2025) |
-| Fragments (articles, paragraphs, considerations) | 45,293 |
-| Citations extracted | 15,867 |
-| Citations linked to a work in the corpus | 2,713 (17.1%) |
-| Knowledge graph | 1,623 nodes, 2,768 edges |
+| Fragments (articles, paragraphs, considerations) | 68,127 |
+| Considerations (case law) | 2,684 |
+| Citations extracted | 12,343 |
+| Citations linked to a work in the corpus | 2,613 (21.2%) |
+| Knowledge graph | 1,585 nodes, 2,653 edges |
 
-The corpus database is not yet included in this repository; see
+The corpus is published separately (SQLite and Parquet); see
 [Data availability](#data-availability).
 
 ## How it works
 
-1. **Ingestion.** Scrapers for ten live government sources (parliament, SRIS, tax
-   authority, central bank, standards bureau, government portal and ministry sites) plus
+1. **Ingestion.** Scrapers for eleven government sites (parliament DNA.sr, tax and maritime
+   authorities, standards bureau, government portal, six ministries), the private legal
+   portal SRiS (Stichting voor de Rechtsorde in Suriname), which supplies most legislative
+   texts, plus
    *rechtspraak.sr*, which is enumerated through its WordPress sitemap. Source files are
    kept unchanged on disk.
 2. **OCR and structure.** Embedded PDF text first, Tesseract OCR as fallback. Articles,
@@ -61,7 +65,7 @@ Requires Python 3.10 or later. The core package has no dependencies; features ar
 installed as extras.
 
 ```bash
-git clone https://github.com/arktos-ai-lab/LexSR.git
+git clone https://github.com/arktos-ai-lab/lexsr-suriname-legal-corpus.git
 cd LexSR
 pip install -e ".[all]"      # or pick extras: ingestion, scraper, ocr, search, static, eval, graph
 ```
@@ -112,7 +116,7 @@ python scripts/build_source_manifest.py --check
 ## Reproducing the paper's evaluations
 
 ```bash
-python -m lexsr benchmark                                   # 61-case citation benchmark
+python -m lexsr benchmark                                   # 65-case citation benchmark
 python scripts/amendment_diagnostics.py --db data/canonical.db --n 100   # amendment parsing coverage
 python -m lexsr build-graph                                 # graph statistics
 ```
@@ -127,22 +131,29 @@ Verdicts are stored in `annotation/labels/`.
 
 These are discussed in the paper:
 
-- 83% of extracted citations are not linked; most are gazette references
+- 79% of extracted citations are not linked; most are gazette references
   (*Staatsblad*, *Gouvernementsblad*) that the resolver does not yet match.
-- 36 of 50 amendment documents yield at least one classified instruction. All failures
+- 25 of 36 amendment documents yield at least one classified instruction. Most failures
   trace to operative text missing from the ingested source, not to the parser rules.
-- Six of sixteen candidate government sources were excluded because their sites changed.
-- In the paper's corpus, 12 considerations in 7 decisions are missing because those
-  decisions reuse a consideration number and the later one overwrote the earlier. This is
-  fixed in the code; a fresh build stores all 1,152.
+- Six candidate source sites were excluded because their sites changed.
+- 499 of the 1,285 legislative works come from SRiS, a private foundation: they are copies,
+  not authenticated publications. Where parliament (DNA.sr) publishes the same act, its
+  PDF is used instead (704 works).
 - OCR quality and document classification are not evaluated separately.
-- The 61-case citation benchmark was produced together with the resolver patterns and
+- The 65-case citation benchmark was produced together with the resolver patterns and
   measures pattern coverage, not generalisation.
 
 ## Data availability
 
-The corpus database and knowledge graph will be released separately. This section will
-link to the release once it is available.
+The government-sourced part of the corpus (300 decisions from rechtspraak.sr and 58
+legislative works from government websites; SQLite, Parquet, knowledge graph and source
+manifest) is archived on Zenodo: https://doi.org/10.5281/zenodo.23467651 (DOI to be filled
+in at publication). Works obtained from SRiS, a private foundation whose terms allow
+copies for personal use only, are not redistributed;
+[`release/release_works.csv`](release/release_works.csv) gives the decision for every
+work. [`release/`](release/) holds the build script, data card and upload steps. Works
+listed in [`release/withhold_text.csv`](release/withhold_text.csv) are not official texts
+and are released without their text.
 
 Surinamese legislation and court decisions are not protected by copyright: Article 11 of
 the Auteurswet 1913 (G.B. 1913 no. 15, as amended) provides that there is no copyright in
